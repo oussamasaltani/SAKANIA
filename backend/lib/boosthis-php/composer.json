@@ -1,0 +1,30 @@
+{
+  "name": "boosthis/boosthis-php",
+  "description": "Boosthis PHP kit — honest performance, crash and infrastructure meters for PHP apps, readable by your AI assistant.",
+  "type": "library",
+  "license": "Apache-2.0",
+  "version": "1.0.70",
+  "require": {
+    "php": ">=8.1"
+  },
+  "suggest": {
+    "psr/http-server-middleware": "Only needed for the PSR-15 adapter (Boosthis\\Middleware). Laravel and plain PHP integrations need nothing."
+  },
+  "autoload": {
+    "psr-4": {
+      "Boosthis\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Boosthis\\Tests\\": "tests/"
+    }
+  },
+  "bin": ["bin/boosthis-mcp"],
+  "scripts": {
+    "test": "php tests/run.php"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

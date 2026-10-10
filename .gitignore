@@ -1,0 +1,56 @@
+# ==========================================================================
+# Sakanai Monorepo - root .gitignore
+# Protects secrets, dependencies and runtime/build artifacts for both the
+# backend (Laravel) and frontend (Vite/React) tiers.
+# ==========================================================================
+
+# --------------------------------------------------------------------------
+# Backend (Laravel) - secrets: never commit
+# --------------------------------------------------------------------------
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/.env.backup
+backend/.env.production
+
+# Backend - dependencies & build artifacts
+backend/vendor/
+backend/node_modules/
+backend/public/build/
+backend/public/hot/
+backend/public/storage/
+
+# Backend - generated / runtime files
+backend/.phpunit.result.cache
+backend/bootstrap/cache/*.php
+backend/.config/
+backend/storage/app/private/contracts/*.pdf
+backend/storage/logs/*.log
+
+# Backend - local databases & dumps
+backend/*.sqlite
+backend/*.sql
+backend/*.sqlite-journal
+
+# --------------------------------------------------------------------------
+# Frontend (Vite / React) - secrets: never commit
+# --------------------------------------------------------------------------
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/.env.local
+
+# Frontend - dependencies & build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# --------------------------------------------------------------------------
+# General OS / editor noise
+# --------------------------------------------------------------------------
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

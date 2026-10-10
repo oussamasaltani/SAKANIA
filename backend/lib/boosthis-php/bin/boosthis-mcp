@@ -1,0 +1,72 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * boosthis-mcp runs the Boosthis PHP kit as a local stdio MCP server: it speaks
+ * newline-delimited JSON-RPC 2.0 over stdin/stdout so an AI editor (Replit AI,
+ * Cursor, Claude, …) can browse the PHP performance rule book, match rules
+ * against code, and read this project's recorded perf samples — the PHP sibling
+ * of lib/boosthis-go/cmd/boosthis-mcp and `java app.boosthis.Mcp`.
+ *
+ * It opens no network listener; the only outbound bytes are the fire-and-forget,
+ * PII-guarded rule proposal from the report_unmatched_pattern tool.
+ *
+ * Usage: register this binary as an MCP server in your editor's MCP config, e.g.
+ *
+ *   {
+ *     "mcpServers": {
+ *       "boosthis": { "command": "vendor/bin/boosthis-mcp" }
+ *     }
+ *   }
+ */
+
+namespace Boosthis\Bin;
+
+use Boosthis\Mcp;
+
+// Locate the Composer autoloader whether this kit is the root project or a
+// dependency inside a larger app's vendor/ tree. Fall back to the kit's own
+// PSR-4 layout so the server still starts from a bare checkout with no install.
+(static function (): void {
+    $candidates = [
+        __DIR__ . '/../vendor/autoload.php',        // kit is the root project
+        __DIR__ . '/../../../autoload.php',          // kit installed under vendor/
+        __DIR__ . '/../../../../vendor/autoload.php', // nested vendor layout
+    ];
+    foreach ($candidates as $autoload) {
+        if (is_file($autoload)) {
+            require $autoload;
+
+            return;
+        }
+    }
+    // No Composer autoloader present: register a minimal PSR-4 loader for the
+    // kit's own src/ so the server runs from a plain checkout.
+    $srcDir = __DIR__ . '/../src';
+    spl_autoload_register(static function (string $class) use ($srcDir): void {
+        $prefix = 'Boosthis\\';
+        if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
+            return;
+        }
+        $relative = substr($class, strlen($prefix));
+        $path = $srcDir . '/' . str_replace('\\', '/', $relative) . '.php';
+        if (is_file($path)) {
+            require $path;
+        }
+    });
+})();
+
+// stdio MCP servers must keep stdout clean: no stray warnings, headers, or
+// output may reach the JSON-RPC pipe. Send PHP's own diagnostics to stderr.
+ini_set('display_errors', 'stderr');
+
+$in = defined('STDIN') ? STDIN : fopen('php://stdin', 'rb');
+$out = defined('STDOUT') ? STDOUT : fopen('php://stdout', 'wb');
+if ($in === false || $out === false) {
+    fwrite(fopen('php://stderr', 'wb') ?: STDERR, "boosthis-mcp: cannot open stdio\n");
+    exit(1);
+}
+
+Mcp::run($in, $out);
