@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use OpenApi\Attributes as OA;
 
 class AdminController extends Controller
 {
@@ -30,6 +31,44 @@ class AdminController extends Controller
         Cache::forget('admin_payments_stats');
     }
 
+    #[OA\Get(
+        path: '/admin/dashboard',
+        operationId: 'adminDashboard',
+        tags: ['Admin'],
+        summary: 'Admin dashboard',
+        description: 'Platform-wide counters, the most recent users, properties and reservations, and the yearly charts. Admin role only.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Dashboard payload.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total_users', type: 'integer'),
+                                new OA\Property(property: 'total_owners', type: 'integer'),
+                                new OA\Property(property: 'total_tenants', type: 'integer'),
+                                new OA\Property(property: 'total_properties', type: 'integer'),
+                                new OA\Property(property: 'total_reservations', type: 'integer'),
+                                new OA\Property(property: 'total_contracts', type: 'integer'),
+                                new OA\Property(property: 'total_payments', type: 'integer'),
+                                new OA\Property(property: 'total_revenue', type: 'number', format: 'float'),
+                            ],
+                        ),
+                        new OA\Property(property: 'recent_users', type: 'array', items: new OA\Items(ref: '#/components/schemas/User')),
+                        new OA\Property(property: 'recent_properties', type: 'array', items: new OA\Items(ref: '#/components/schemas/Property')),
+                        new OA\Property(property: 'recent_reservations', type: 'array', items: new OA\Items(ref: '#/components/schemas/Reservation')),
+                        new OA\Property(property: 'charts', type: 'object'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function dashboard(Request $request)
     {
         $stats = Cache::remember('admin_dashboard_stats', 60, function () {
@@ -110,6 +149,42 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/users',
+        operationId: 'adminUsers',
+        tags: ['Admin'],
+        summary: 'List users',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches name, email or phone.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated users with global stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'users', type: 'object'),
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total', type: 'integer'),
+                                new OA\Property(property: 'owners', type: 'integer'),
+                                new OA\Property(property: 'tenants', type: 'integer'),
+                                new OA\Property(property: 'admins', type: 'integer'),
+                                new OA\Property(property: 'active', type: 'integer'),
+                                new OA\Property(property: 'inactive', type: 'integer'),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function users(Request $request)
     {
         $query = User::with('role');
@@ -150,6 +225,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/users/{id}',
+        operationId: 'adminViewUser',
+        tags: ['Admin'],
+        summary: 'Show a user',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The user.', content: new OA\JsonContent(ref: '#/components/schemas/User')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function viewUser(Request $request, $id)
     {
         $user = User::with('role')->find($id);
@@ -161,6 +252,31 @@ class AdminController extends Controller
         return response()->json($user);
     }
 
+    #[OA\Put(
+        path: '/admin/users/{id}/activate',
+        operationId: 'adminActivateUser',
+        tags: ['Admin'],
+        summary: 'Activate a user',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User activated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'user', ref: '#/components/schemas/User'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function activateUser(Request $request, $id)
     {
         $user = User::find($id);
@@ -176,6 +292,33 @@ class AdminController extends Controller
         return response()->json(['message' => 'User activated successfully.', 'user' => $user->load('role')]);
     }
 
+    #[OA\Put(
+        path: '/admin/users/{id}/deactivate',
+        operationId: 'adminDeactivateUser',
+        tags: ['Admin'],
+        summary: 'Deactivate a user',
+        description: 'An administrator cannot deactivate its own account nor the last active administrator.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'User deactivated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'user', ref: '#/components/schemas/User'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function deactivateUser(Request $request, $id)
     {
         $user = User::find($id);
@@ -199,6 +342,24 @@ class AdminController extends Controller
         return response()->json(['message' => 'User deactivated successfully.', 'user' => $user->load('role')]);
     }
 
+    #[OA\Delete(
+        path: '/admin/users/{id}',
+        operationId: 'adminDeleteUser',
+        tags: ['Admin'],
+        summary: 'Delete a user',
+        description: 'An administrator cannot delete its own account nor the last active administrator.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'User deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function deleteUser(Request $request, $id)
     {
         $user = User::find($id);
@@ -227,6 +388,41 @@ class AdminController extends Controller
         return User::where('role_id', 3)->where('is_active', true)->count();
     }
 
+    #[OA\Get(
+        path: '/admin/properties',
+        operationId: 'adminProperties',
+        tags: ['Admin'],
+        summary: 'List properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches title or location.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', schema: new OA\Schema(type: 'string', enum: ['pending', 'approved', 'rejected'])),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated properties with global stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'properties', type: 'object'),
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total', type: 'integer'),
+                                new OA\Property(property: 'approved', type: 'integer'),
+                                new OA\Property(property: 'pending', type: 'integer'),
+                                new OA\Property(property: 'rejected', type: 'integer'),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function properties(Request $request)
     {
         $query = Property::with(['owner', 'images']);
@@ -266,6 +462,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/properties/{id}',
+        operationId: 'adminViewProperty',
+        tags: ['Admin'],
+        summary: 'Show a property',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The property.', content: new OA\JsonContent(ref: '#/components/schemas/Property')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function viewProperty(Request $request, $id)
     {
         $property = Property::with(['owner', 'images'])->find($id);
@@ -277,6 +489,32 @@ class AdminController extends Controller
         return response()->json($property);
     }
 
+    #[OA\Put(
+        path: '/admin/properties/{id}/approve',
+        operationId: 'adminApproveProperty',
+        tags: ['Admin'],
+        summary: 'Approve a property',
+        description: 'Sets the property to `approved` and notifies its owner.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Property approved.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'property', ref: '#/components/schemas/Property'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function approveProperty(Request $request, $id)
     {
         $property = Property::find($id);
@@ -305,6 +543,32 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Put(
+        path: '/admin/properties/{id}/reject',
+        operationId: 'adminRejectProperty',
+        tags: ['Admin'],
+        summary: 'Reject a property',
+        description: 'Sets the property to `rejected` and notifies its owner.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Property rejected.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'property', ref: '#/components/schemas/Property'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function rejectProperty(Request $request, $id)
     {
         $property = Property::find($id);
@@ -333,6 +597,23 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Delete(
+        path: '/admin/properties/{id}',
+        operationId: 'adminDeleteProperty',
+        tags: ['Admin'],
+        summary: 'Delete a property',
+        description: 'Deletes the property along with its stored images.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Property deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function deleteProperty(Request $request, $id)
     {
         $property = Property::with('images')->find($id);
@@ -356,6 +637,42 @@ class AdminController extends Controller
         return response()->json(['message' => 'Property deleted successfully.']);
     }
 
+    #[OA\Get(
+        path: '/admin/reservations',
+        operationId: 'adminReservations',
+        tags: ['Admin'],
+        summary: 'List reservations',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches property title/location or tenant name/email.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', schema: new OA\Schema(type: 'string', enum: ['pending', 'accepted', 'rejected', 'cancelled'])),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated reservations with global stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'reservations', type: 'object'),
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total', type: 'integer'),
+                                new OA\Property(property: 'pending', type: 'integer'),
+                                new OA\Property(property: 'accepted', type: 'integer'),
+                                new OA\Property(property: 'rejected', type: 'integer'),
+                                new OA\Property(property: 'cancelled', type: 'integer'),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function reservations(Request $request)
     {
         $query = Reservation::with(['property', 'tenant', 'contract']);
@@ -400,6 +717,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/reservations/{id}',
+        operationId: 'adminViewReservation',
+        tags: ['Admin'],
+        summary: 'Show a reservation',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The reservation.', content: new OA\JsonContent(ref: '#/components/schemas/Reservation')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function viewReservation(Request $request, $id)
     {
         $reservation = Reservation::with(['property', 'tenant'])->find($id);
@@ -411,6 +744,22 @@ class AdminController extends Controller
         return response()->json($reservation);
     }
 
+    #[OA\Delete(
+        path: '/admin/reservations/{id}',
+        operationId: 'adminDeleteReservation',
+        tags: ['Admin'],
+        summary: 'Delete a reservation',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Reservation deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function deleteReservation(Request $request, $id)
     {
         $reservation = Reservation::find($id);
@@ -426,6 +775,42 @@ class AdminController extends Controller
         return response()->json(['message' => 'Reservation deleted successfully.']);
     }
 
+    #[OA\Get(
+        path: '/admin/contracts',
+        operationId: 'adminContracts',
+        tags: ['Admin'],
+        summary: 'List contracts',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches property title, tenant or owner name.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', schema: new OA\Schema(type: 'string', enum: ['draft', 'active', 'ended', 'completed'])),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated contracts with global stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'contracts', type: 'object'),
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total', type: 'integer'),
+                                new OA\Property(property: 'draft', type: 'integer'),
+                                new OA\Property(property: 'active', type: 'integer'),
+                                new OA\Property(property: 'ended', type: 'integer'),
+                                new OA\Property(property: 'completed', type: 'integer'),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function contracts(Request $request)
     {
         $query = Contract::with(['reservation', 'reservation.property', 'owner', 'tenant', 'latestPayment']);
@@ -472,6 +857,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/contracts/{id}',
+        operationId: 'adminViewContract',
+        tags: ['Admin'],
+        summary: 'Show a contract',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The contract.', content: new OA\JsonContent(ref: '#/components/schemas/Contract')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function viewContract(Request $request, $id)
     {
         $contract = Contract::with(['reservation', 'reservation.property', 'owner', 'tenant', 'latestPayment'])->find($id);
@@ -483,6 +884,41 @@ class AdminController extends Controller
         return response()->json($contract);
     }
 
+    #[OA\Put(
+        path: '/admin/contracts/{id}/status',
+        operationId: 'adminUpdateContractStatus',
+        tags: ['Admin'],
+        summary: 'Update a contract status',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['status'],
+                properties: [
+                    new OA\Property(property: 'status', type: 'string', enum: ['draft', 'active', 'ended', 'completed'], example: 'active'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Contract status updated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'contract', ref: '#/components/schemas/Contract'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function updateContractStatus(Request $request, $id)
     {
         $validated = $request->validate([
@@ -505,6 +941,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Delete(
+        path: '/admin/contracts/{id}',
+        operationId: 'adminDeleteContract',
+        tags: ['Admin'],
+        summary: 'Delete a contract',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Contract deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function deleteContract(Request $request, $id)
     {
         $contract = Contract::find($id);
@@ -520,6 +972,42 @@ class AdminController extends Controller
         return response()->json(['message' => 'Contract deleted successfully.']);
     }
 
+    #[OA\Get(
+        path: '/admin/payments',
+        operationId: 'adminPayments',
+        tags: ['Admin'],
+        summary: 'List payments',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches tenant name/email or transaction reference.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', schema: new OA\Schema(type: 'string', enum: ['pending', 'paid', 'failed', 'refunded'])),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated payments with global stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'payments', type: 'object'),
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total', type: 'integer'),
+                                new OA\Property(property: 'total_revenue', type: 'number', format: 'float'),
+                                new OA\Property(property: 'paid', type: 'integer'),
+                                new OA\Property(property: 'pending', type: 'integer'),
+                                new OA\Property(property: 'failed', type: 'integer'),
+                            ],
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function payments(Request $request)
     {
         $query = Payment::with(['reservation', 'reservation.property', 'tenant']);
@@ -561,6 +1049,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/admin/payments/{id}',
+        operationId: 'adminViewPayment',
+        tags: ['Admin'],
+        summary: 'Show a payment',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The payment.', content: new OA\JsonContent(ref: '#/components/schemas/Payment')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function viewPayment(Request $request, $id)
     {
         $payment = Payment::with(['reservation', 'reservation.property', 'tenant'])->find($id);
@@ -572,6 +1076,41 @@ class AdminController extends Controller
         return response()->json($payment);
     }
 
+    #[OA\Put(
+        path: '/admin/payments/{id}/status',
+        operationId: 'adminUpdatePaymentStatus',
+        tags: ['Admin'],
+        summary: 'Update a payment status',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['status'],
+                properties: [
+                    new OA\Property(property: 'status', type: 'string', enum: ['paid', 'pending', 'failed', 'refunded'], example: 'paid'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Payment status updated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'payment', ref: '#/components/schemas/Payment'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function updatePaymentStatus(Request $request, $id)
     {
         $validated = $request->validate([
@@ -594,6 +1133,22 @@ class AdminController extends Controller
         ]);
     }
 
+    #[OA\Delete(
+        path: '/admin/payments/{id}',
+        operationId: 'adminDeletePayment',
+        tags: ['Admin'],
+        summary: 'Delete a payment',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Payment deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function deletePayment(Request $request, $id)
     {
         $payment = Payment::find($id);

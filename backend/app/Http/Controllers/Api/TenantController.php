@@ -10,9 +10,42 @@ use App\Models\Reservation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use OpenApi\Attributes as OA;
 
 class TenantController extends Controller
 {
+    #[OA\Get(
+        path: '/tenant/dashboard',
+        operationId: 'tenantDashboard',
+        tags: ['Tenant'],
+        summary: 'Tenant dashboard',
+        description: 'Aggregated counters, the five most recent reservations and a set of featured properties. Tenant role only.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Dashboard payload.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total_reservations', type: 'integer'),
+                                new OA\Property(property: 'active_contracts', type: 'integer'),
+                                new OA\Property(property: 'total_payments', type: 'number', format: 'float'),
+                                new OA\Property(property: 'pending_reservations', type: 'integer'),
+                            ],
+                        ),
+                        new OA\Property(property: 'recent_reservations', type: 'array', items: new OA\Items(ref: '#/components/schemas/Reservation')),
+                        new OA\Property(property: 'featured_properties', type: 'array', items: new OA\Items(ref: '#/components/schemas/Property')),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function dashboard(Request $request)
     {
         $tenant = $request->user();
@@ -53,6 +86,32 @@ class TenantController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/tenant/reservations',
+        operationId: 'tenantReservations',
+        tags: ['Tenant'],
+        summary: 'List the tenant\'s reservations',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated reservations.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Reservation')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function myReservations(Request $request)
     {
         $reservations = Reservation::where('tenant_id', $request->user()->id)
@@ -63,6 +122,32 @@ class TenantController extends Controller
         return response()->json($reservations);
     }
 
+    #[OA\Get(
+        path: '/tenant/contracts',
+        operationId: 'tenantContracts',
+        tags: ['Tenant'],
+        summary: 'List the tenant\'s contracts',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated contracts.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Contract')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function myContracts(Request $request)
     {
         $contracts = Contract::where('tenant_id', $request->user()->id)
@@ -73,6 +158,22 @@ class TenantController extends Controller
         return response()->json($contracts);
     }
 
+    #[OA\Get(
+        path: '/tenant/contracts/{id}',
+        operationId: 'tenantContractDetails',
+        tags: ['Tenant'],
+        summary: 'Show one of the tenant\'s contracts',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The contract.', content: new OA\JsonContent(ref: '#/components/schemas/Contract')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function contractDetails(Request $request, $id)
     {
         $contract = Contract::where('tenant_id', $request->user()->id)
@@ -82,6 +183,32 @@ class TenantController extends Controller
         return response()->json($contract);
     }
 
+    #[OA\Get(
+        path: '/tenant/payments',
+        operationId: 'tenantPayments',
+        tags: ['Tenant'],
+        summary: 'List the tenant\'s payments',
+        description: 'Paginated payments with the cumulative totals paid and remaining.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Payments and totals.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'payments', ref: '#/components/schemas/Payment'),
+                        new OA\Property(property: 'total_paid', type: 'number', format: 'float'),
+                        new OA\Property(property: 'total_remaining', type: 'number', format: 'float'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function myPayments(Request $request)
     {
         $query = Payment::where('tenant_id', $request->user()->id)

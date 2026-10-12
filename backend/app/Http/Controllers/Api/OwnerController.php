@@ -14,9 +14,42 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use OpenApi\Attributes as OA;
 
 class OwnerController extends Controller
 {
+    #[OA\Get(
+        path: '/owner/dashboard',
+        operationId: 'ownerDashboard',
+        tags: ['Owner'],
+        summary: 'Owner dashboard',
+        description: 'Counters, the five most recent reservations and the four most recent payments for the owner\'s portfolio. Owner role only.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Dashboard payload.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'stats',
+                            type: 'object',
+                            properties: [
+                                new OA\Property(property: 'total_properties', type: 'integer'),
+                                new OA\Property(property: 'pending_reservations', type: 'integer'),
+                                new OA\Property(property: 'active_tenants', type: 'integer'),
+                                new OA\Property(property: 'total_revenue', type: 'number', format: 'float'),
+                            ],
+                        ),
+                        new OA\Property(property: 'recent_reservations', type: 'array', items: new OA\Items(ref: '#/components/schemas/Reservation')),
+                        new OA\Property(property: 'recent_payments', type: 'array', items: new OA\Items(ref: '#/components/schemas/Payment')),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function dashboard(Request $request)
     {
         $owner = $request->user();
@@ -70,6 +103,34 @@ class OwnerController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/owner/properties',
+        operationId: 'ownerProperties',
+        tags: ['Owner'],
+        summary: 'List the owner\'s properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'search', in: 'query', description: 'Matches title or location.', schema: new OA\Schema(type: 'string')),
+            new OA\Parameter(name: 'status', in: 'query', schema: new OA\Schema(type: 'string', enum: ['pending', 'approved', 'rejected'])),
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 12)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated properties.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Property')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function properties(Request $request)
     {
         $query = Property::where('owner_id', $request->user()->id)->with('images');
@@ -91,6 +152,30 @@ class OwnerController extends Controller
         return response()->json($properties);
     }
 
+    #[OA\Get(
+        path: '/owner/properties/stats',
+        operationId: 'ownerPropertyStats',
+        tags: ['Owner'],
+        summary: 'Owner property statistics',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Property stats.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'total', type: 'integer'),
+                        new OA\Property(property: 'approved', type: 'integer'),
+                        new OA\Property(property: 'pending', type: 'integer'),
+                        new OA\Property(property: 'rejected', type: 'integer'),
+                        new OA\Property(property: 'total_revenue', type: 'number', format: 'float'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function propertyStats(Request $request)
     {
         $ownerId = $request->user()->id;
@@ -119,6 +204,51 @@ class OwnerController extends Controller
         return response()->json($stats);
     }
 
+    #[OA\Post(
+        path: '/owner/properties',
+        operationId: 'ownerStoreProperty',
+        tags: ['Owner'],
+        summary: 'Create a property',
+        description: 'The new property starts in `pending` status until an administrator approves it. Photos are sent as an array of base64 data URIs (max 10).',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['title', 'description', 'location', 'type', 'area', 'price_per_month', 'rooms', 'bathrooms', 'floor', 'capacity'],
+                properties: [
+                    new OA\Property(property: 'title', type: 'string', maxLength: 255),
+                    new OA\Property(property: 'description', type: 'string'),
+                    new OA\Property(property: 'location', type: 'string', maxLength: 255),
+                    new OA\Property(property: 'type', type: 'string', enum: ['apartment', 'house', 'villa', 'studio', 'office']),
+                    new OA\Property(property: 'area', type: 'number', minimum: 0),
+                    new OA\Property(property: 'price_per_month', type: 'number', minimum: 0),
+                    new OA\Property(property: 'rooms', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'bathrooms', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'floor', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'capacity', type: 'integer', minimum: 1),
+                    new OA\Property(property: 'amenities', type: 'array', items: new OA\Items(type: 'string'), nullable: true),
+                    new OA\Property(property: 'images', type: 'array', maxItems: 10, items: new OA\Items(type: 'string'), description: 'Base64 data URIs.', nullable: true),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Property created.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'rejected_images', type: 'integer'),
+                        new OA\Property(property: 'property', ref: '#/components/schemas/Property'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function storeProperty(Request $request)
     {
         if (is_string($request->amenities)) {
@@ -218,6 +348,55 @@ class OwnerController extends Controller
             : $count . ' photos could not be saved and were skipped.';
     }
 
+    #[OA\Put(
+        path: '/owner/properties/{id}',
+        operationId: 'ownerUpdateProperty',
+        tags: ['Owner'],
+        summary: 'Update a property',
+        description: 'Only fields present are written. New photos are appended as base64 data URIs; existing ones are removed through `removed_images`.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'title', type: 'string', maxLength: 255),
+                    new OA\Property(property: 'description', type: 'string'),
+                    new OA\Property(property: 'location', type: 'string', maxLength: 255),
+                    new OA\Property(property: 'type', type: 'string', enum: ['apartment', 'house', 'villa', 'studio', 'office']),
+                    new OA\Property(property: 'area', type: 'number', minimum: 0),
+                    new OA\Property(property: 'price_per_month', type: 'number', minimum: 0),
+                    new OA\Property(property: 'rooms', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'bathrooms', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'floor', type: 'integer', minimum: 0),
+                    new OA\Property(property: 'capacity', type: 'integer', minimum: 1),
+                    new OA\Property(property: 'amenities', type: 'array', items: new OA\Items(type: 'string'), nullable: true),
+                    new OA\Property(property: 'images', type: 'array', maxItems: 10, items: new OA\Items(type: 'string'), nullable: true),
+                    new OA\Property(property: 'removed_images', type: 'array', items: new OA\Items(type: 'integer'), description: 'Ids of PropertyImage rows to delete.', nullable: true),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Property updated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'rejected_images', type: 'integer'),
+                        new OA\Property(property: 'property', ref: '#/components/schemas/Property'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function updateProperty(Request $request, $id)
     {
         $property = Property::where('owner_id', $request->user()->id)->find($id);
@@ -317,6 +496,23 @@ class OwnerController extends Controller
         }
     }
 
+    #[OA\Delete(
+        path: '/owner/properties/{id}',
+        operationId: 'ownerDeleteProperty',
+        tags: ['Owner'],
+        summary: 'Delete a property',
+        description: 'Deletes the property along with its stored images.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Property deleted.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function deleteProperty(Request $request, $id)
     {
         $property = Property::where('owner_id', $request->user()->id)
@@ -340,6 +536,22 @@ class OwnerController extends Controller
         return response()->json(['message' => 'Property deleted successfully.']);
     }
 
+    #[OA\Get(
+        path: '/owner/properties/{id}',
+        operationId: 'ownerGetProperty',
+        tags: ['Owner'],
+        summary: 'Show one of the owner\'s properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The property.', content: new OA\JsonContent(ref: '#/components/schemas/Property')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function getProperty(Request $request, $id)
     {
         $property = Property::where('owner_id', $request->user()->id)
@@ -353,6 +565,32 @@ class OwnerController extends Controller
         return response()->json($property);
     }
 
+    #[OA\Get(
+        path: '/owner/reservations',
+        operationId: 'ownerReservations',
+        tags: ['Owner'],
+        summary: 'List reservations on the owner\'s properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated reservations.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Reservation')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function reservations(Request $request)
     {
         $propertyIds = Property::where('owner_id', $request->user()->id)->pluck('id');
@@ -365,6 +603,22 @@ class OwnerController extends Controller
         return response()->json($reservations);
     }
 
+    #[OA\Get(
+        path: '/owner/reservations/{id}',
+        operationId: 'ownerReservationDetails',
+        tags: ['Owner'],
+        summary: 'Show a reservation on the owner\'s properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The reservation.', content: new OA\JsonContent(ref: '#/components/schemas/Reservation')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function reservationDetails(Request $request, $id)
     {
         $propertyIds = Property::where('owner_id', $request->user()->id)->pluck('id');
@@ -380,6 +634,35 @@ class OwnerController extends Controller
         return response()->json($reservation);
     }
 
+    #[OA\Put(
+        path: '/owner/reservations/{id}/accept',
+        operationId: 'ownerAcceptReservation',
+        tags: ['Owner'],
+        summary: 'Accept a pending reservation',
+        description: 'Only pending reservations can be accepted, and the dates must not overlap an existing accepted booking.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Reservation accepted.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'reservation', ref: '#/components/schemas/Reservation'),
+                        new OA\Property(property: 'total_amount', type: 'number', format: 'float'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, description: 'Not pending or the dates conflict.', content: new OA\JsonContent(ref: '#/components/schemas/ErrorMessage')),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function acceptReservation(Request $request, $id)
     {
         $ownerId = $request->user()->id;
@@ -456,6 +739,33 @@ class OwnerController extends Controller
         ]);
     }
 
+    #[OA\Put(
+        path: '/owner/reservations/{id}/reject',
+        operationId: 'ownerRejectReservation',
+        tags: ['Owner'],
+        summary: 'Reject a pending reservation',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Reservation rejected.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string'),
+                        new OA\Property(property: 'reservation', ref: '#/components/schemas/Reservation'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, description: 'The reservation is not pending.', content: new OA\JsonContent(ref: '#/components/schemas/ErrorMessage')),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function rejectReservation(Request $request, $id)
     {
         $ownerId = $request->user()->id;
@@ -516,6 +826,32 @@ class OwnerController extends Controller
             ->find($id);
     }
 
+    #[OA\Get(
+        path: '/owner/contracts',
+        operationId: 'ownerContracts',
+        tags: ['Owner'],
+        summary: 'List the owner\'s contracts',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated contracts.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Contract')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function contracts(Request $request)
     {
         $contracts = Contract::where('owner_id', $request->user()->id)
@@ -526,6 +862,22 @@ class OwnerController extends Controller
         return response()->json($contracts);
     }
 
+    #[OA\Get(
+        path: '/owner/contracts/{id}',
+        operationId: 'ownerContractDetails',
+        tags: ['Owner'],
+        summary: 'Show one of the owner\'s contracts',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'The contract.', content: new OA\JsonContent(ref: '#/components/schemas/Contract')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function contractDetails(Request $request, $id)
     {
         $contract = Contract::where('owner_id', $request->user()->id)
@@ -539,6 +891,32 @@ class OwnerController extends Controller
         return response()->json($contract);
     }
 
+    #[OA\Get(
+        path: '/owner/payments',
+        operationId: 'ownerPayments',
+        tags: ['Owner'],
+        summary: 'List payments on the owner\'s properties',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'per_page', in: 'query', schema: new OA\Schema(type: 'integer', default: 15)),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Paginated payments.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'data', type: 'array', items: new OA\Items(ref: '#/components/schemas/Payment')),
+                        new OA\Property(property: 'current_page', type: 'integer'),
+                        new OA\Property(property: 'last_page', type: 'integer'),
+                        new OA\Property(property: 'total', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+        ],
+    )]
     public function payments(Request $request)
     {
         $payments = Payment::whereHas('reservation.property', function ($q) use ($request) {

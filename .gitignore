@@ -24,6 +24,7 @@ backend/public/storage/
 backend/.phpunit.result.cache
 backend/bootstrap/cache/*.php
 backend/.config/
+backend/storage/api-docs/
 backend/storage/app/private/contracts/*.pdf
 backend/storage/logs/*.log
 

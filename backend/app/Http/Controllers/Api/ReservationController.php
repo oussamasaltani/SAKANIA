@@ -9,9 +9,45 @@ use App\Models\Reservation;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use OpenApi\Attributes as OA;
 
 class ReservationController extends Controller
 {
+    #[OA\Post(
+        path: '/reservations',
+        operationId: 'reservationsStore',
+        tags: ['Reservations'],
+        summary: 'Request a reservation',
+        description: 'Tenant only. The property must be approved, not owned by the caller, and free for the requested period. Rate limited to 10 requests per minute.',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['property_id', 'start_date', 'duration_months'],
+                properties: [
+                    new OA\Property(property: 'property_id', type: 'integer', example: 3),
+                    new OA\Property(property: 'start_date', type: 'string', format: 'date', description: 'Must not be in the past.', example: '2026-11-01'),
+                    new OA\Property(property: 'duration_months', type: 'integer', minimum: 1, maximum: 36, example: 6),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Reservation created.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Reservation created successfully.'),
+                        new OA\Property(property: 'reservation', ref: '#/components/schemas/Reservation'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 422, description: 'The property is unavailable, the caller owns it or the dates overlap.', content: new OA\JsonContent(ref: '#/components/schemas/ErrorMessage')),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -99,6 +135,33 @@ class ReservationController extends Controller
         ], 201);
     }
 
+    #[OA\Put(
+        path: '/reservations/{id}/cancel',
+        operationId: 'reservationsCancel',
+        tags: ['Reservations'],
+        summary: 'Cancel a pending reservation',
+        description: 'Tenant only. Only reservations that are still pending and belong to the caller can be cancelled.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Reservation cancelled.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Reservation cancelled successfully.'),
+                        new OA\Property(property: 'reservation', ref: '#/components/schemas/Reservation'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, description: 'The reservation is not pending.', content: new OA\JsonContent(ref: '#/components/schemas/ErrorMessage')),
+        ],
+    )]
     public function cancel(Request $request, $id)
     {
         $reservation = Reservation::where('tenant_id', $request->user()->id)->find($id);

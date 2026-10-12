@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Contract;
 use App\Services\ContractService;
 use Illuminate\Http\Request;
+use OpenApi\Attributes as OA;
 
 class ContractController extends Controller
 {
@@ -13,6 +14,27 @@ class ContractController extends Controller
     {
     }
 
+    #[OA\Get(
+        path: '/contracts/{id}/download',
+        operationId: 'contractsDownload',
+        tags: ['Contracts'],
+        summary: 'Download a rental contract PDF',
+        description: 'Accessible to the contract owner and tenant only. A missing file is rebuilt from the stored reservation and payment data before being served.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'id', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The contract PDF.',
+                content: new OA\MediaType(mediaType: 'application/pdf', schema: new OA\Schema(type: 'string', format: 'binary')),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function download(Request $request, $id)
     {
         $contract = Contract::with(['reservation', 'reservation.property', 'owner', 'tenant'])->find($id);

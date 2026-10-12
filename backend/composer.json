@@ -18,6 +18,7 @@
         "php": "^8.2",
         "barryvdh/laravel-dompdf": "*",
         "boosthis/boosthis-php": "*",
+        "darkaonline/l5-swagger": "*",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "*",
         "laravel/socialite": "*",

@@ -10,6 +10,7 @@ use App\Models\Reservation;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use OpenApi\Attributes as OA;
 
 /**
  * Direct communication between a tenant and the owner of a property.
@@ -26,6 +27,40 @@ class MessageController extends Controller
     /**
      * The conversations the authenticated user takes part in, most recent first.
      */
+    #[OA\Get(
+        path: '/messages',
+        operationId: 'messagesIndex',
+        tags: ['Messaging'],
+        summary: 'List conversations',
+        description: 'The conversations the signed-in user takes part in, most recent first, each with its counterpart, last message and unread count.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The conversations.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: 'data',
+                            type: 'array',
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: 'id', type: 'integer'),
+                                    new OA\Property(property: 'property', type: 'object', nullable: true),
+                                    new OA\Property(property: 'reservation', type: 'object', nullable: true),
+                                    new OA\Property(property: 'counterpart', type: 'object', nullable: true),
+                                    new OA\Property(property: 'last_message', ref: '#/components/schemas/Message', nullable: true),
+                                    new OA\Property(property: 'unread_count', type: 'integer'),
+                                    new OA\Property(property: 'last_message_at', type: 'string', format: 'date-time', nullable: true),
+                                ],
+                            ),
+                        ),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+        ],
+    )]
     public function index(Request $request)
     {
         $user = $request->user();
@@ -51,6 +86,31 @@ class MessageController extends Controller
      * A single conversation with its messages, oldest first. Opening it marks
      * the messages the user received as read.
      */
+    #[OA\Get(
+        path: '/messages/conversations/{conversation}',
+        operationId: 'messagesShow',
+        tags: ['Messaging'],
+        summary: 'Show a conversation',
+        description: 'Messages of a thread the caller belongs to, oldest first. Opening it marks the received messages as read.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'conversation', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The conversation and its messages.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'conversation', type: 'object'),
+                        new OA\Property(property: 'messages', type: 'array', items: new OA\Items(ref: '#/components/schemas/Message')),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function show(Request $request, $conversationId)
     {
         $user = $request->user();
@@ -89,6 +149,43 @@ class MessageController extends Controller
      * a receiver_id plus the property the tenant is asking about (the first
      * message of a new thread).
      */
+    #[OA\Post(
+        path: '/messages',
+        operationId: 'messagesSend',
+        tags: ['Messaging'],
+        summary: 'Send a message',
+        description: 'Either reply inside a thread (`conversation_id`) or open a new one as a tenant (`receiver_id` + `property_id`, with an optional `reservation_id`). Rate limited to 30 requests per minute.',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['content'],
+                properties: [
+                    new OA\Property(property: 'conversation_id', type: 'integer', nullable: true, description: 'Reply inside an existing thread.'),
+                    new OA\Property(property: 'receiver_id', type: 'integer', nullable: true, description: 'Required to open a new thread.'),
+                    new OA\Property(property: 'property_id', type: 'integer', nullable: true, description: 'Required to open a new thread.'),
+                    new OA\Property(property: 'reservation_id', type: 'integer', nullable: true),
+                    new OA\Property(property: 'content', type: 'string', maxLength: 5000, example: 'Is the apartment still available?'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: 'Message sent.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', ref: '#/components/schemas/Message'),
+                        new OA\Property(property: 'conversation_id', type: 'integer'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 403, ref: '#/components/responses/Forbidden'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function send(Request $request)
     {
         $user = $request->user();
@@ -167,6 +264,21 @@ class MessageController extends Controller
     /**
      * Total number of messages the authenticated user has not read yet.
      */
+    #[OA\Get(
+        path: '/messages/unread/count',
+        operationId: 'messagesUnreadCount',
+        tags: ['Messaging'],
+        summary: 'Unread message count',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'The unread count.',
+                content: new OA\JsonContent(properties: [new OA\Property(property: 'unread_count', type: 'integer', example: 4)]),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+        ],
+    )]
     public function unreadCount(Request $request)
     {
         $count = Message::where('receiver_id', $request->user()->id)
@@ -179,6 +291,22 @@ class MessageController extends Controller
     /**
      * Marks every message received in a conversation as read.
      */
+    #[OA\Put(
+        path: '/messages/conversations/{conversation}/read',
+        operationId: 'messagesMarkAsRead',
+        tags: ['Messaging'],
+        summary: 'Mark a conversation as read',
+        description: 'Marks every message the caller received in the thread as read.',
+        security: [['sanctum' => []]],
+        parameters: [
+            new OA\Parameter(name: 'conversation', in: 'path', required: true, schema: new OA\Schema(type: 'integer')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Conversation marked as read.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 404, ref: '#/components/responses/NotFound'),
+        ],
+    )]
     public function markAsRead(Request $request, $conversationId)
     {
         $user = $request->user();

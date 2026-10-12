@@ -1,4 +1,4 @@
-# Sakanai
+# Sakania
 
 > A full-stack property rental and reservation management platform, built as a
 > monorepo with a **Laravel 12 REST API** (backend) and a **React 19 + Vite SPA**
@@ -8,16 +8,26 @@
 
 ## Table of Contents
 
-1. [Project Overview](#1-project-overview)
-2. [Repository Architecture](#2-repository-architecture)
-3. [Tech Stack](#3-tech-stack)
-4. [Key Features](#4-key-features)
-5. [Getting Started](#5-getting-started)
-6. [Environment Variables](#6-environment-variables)
-7. [API Overview](#7-api-overview)
-8. [Testing](#8-testing)
-9. [Security & Secrets](#9-security--secrets)
-10. [Deployment Notes](#10-deployment-notes)
+- [Sakania](#sakania)
+  - [Table of Contents](#table-of-contents)
+  - [1. Project Overview](#1-project-overview)
+  - [2. Repository Architecture](#2-repository-architecture)
+    - [How the pieces fit together](#how-the-pieces-fit-together)
+  - [3. Tech Stack](#3-tech-stack)
+    - [Backend (`backend/`)](#backend-backend)
+    - [Frontend (`frontend/`)](#frontend-frontend)
+    - [Infrastructure](#infrastructure)
+  - [4. Key Features](#4-key-features)
+  - [5. Getting Started](#5-getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Option A — Docker (recommended)](#option-a--docker-recommended)
+    - [Option B — Local (without Docker)](#option-b--local-without-docker)
+    - [Default demo accounts (after seeding)](#default-demo-accounts-after-seeding)
+  - [6. Environment Variables](#6-environment-variables)
+  - [7. API Overview](#7-api-overview)
+  - [8. Testing](#8-testing)
+  - [9. Security \& Secrets](#9-security--secrets)
+  - [10. Deployment Notes](#10-deployment-notes)
 
 ---
 

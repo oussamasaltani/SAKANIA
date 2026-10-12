@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Chatbot\ChatbotService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use OpenApi\Attributes as OA;
 use Throwable;
 
 class ChatbotController extends Controller
@@ -28,6 +29,30 @@ class ChatbotController extends Controller
      * the thread, `intent` is exposed for the client's own telemetry and is never
      * required to display the answer.
      */
+    #[OA\Post(
+        path: '/chatbot/send',
+        operationId: 'chatbotSendMessage',
+        tags: ['Chatbot'],
+        summary: 'Ask the SAKANIA assistant',
+        description: 'Public, but a Bearer token enriches the answer with the signed-in account and its data. Rate limited to 20 requests per minute.',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['message'],
+                properties: [
+                    new OA\Property(property: 'message', type: 'string', maxLength: 2000, example: 'Do you have apartments in Marrakech under 5000 MAD?'),
+                    new OA\Property(property: 'conversation_id', type: 'integer', nullable: true, description: 'Continue an existing thread.'),
+                    new OA\Property(property: 'property_id', type: 'integer', nullable: true, description: 'The property the user is currently viewing.'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'The assistant reply.', content: new OA\JsonContent(ref: '#/components/schemas/ChatbotReply')),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+            new OA\Response(response: 500, ref: '#/components/responses/ServerError'),
+        ],
+    )]
     public function sendMessage(Request $request)
     {
         $validated = $request->validate([

@@ -8,6 +8,7 @@ use App\Services\ImageUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use OpenApi\Attributes as OA;
 
 /**
  * The signed-in user's own account, for every role.
@@ -34,6 +35,18 @@ class ProfileController extends Controller
      * `role` is flattened to its name here, matching /api/user and the login and
      * register responses, so the client can treat both shapes as the same user.
      */
+    #[OA\Get(
+        path: '/profile',
+        operationId: 'profileShow',
+        tags: ['Profile'],
+        summary: 'The signed-in account',
+        description: 'Personal information of the authenticated user, whatever the role. The same payload is served on the role-scoped aliases `/tenant/profile`, `/owner/profile` and `/admin/profile`.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(response: 200, description: 'The signed-in user.', content: new OA\JsonContent(ref: '#/components/schemas/User')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+        ],
+    )]
     public function show(Request $request)
     {
         return response()->json($this->present($request->user()));
@@ -46,6 +59,39 @@ class ProfileController extends Controller
      * so saving the form without touching the avatar leaves the stored avatar
      * exactly where it is instead of clearing it.
      */
+    #[OA\Put(
+        path: '/profile',
+        operationId: 'profileUpdate',
+        tags: ['Profile'],
+        summary: 'Update the signed-in account',
+        description: 'Every field is optional; only the fields actually present are written. `company_name` is honoured for owner accounts only. The avatar is sent as a base64 data URI. Also available on `/tenant/profile`, `/owner/profile` and `/admin/profile`.',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: false,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: 'full_name', type: 'string', maxLength: 100, example: 'Amina El Idrissi'),
+                    new OA\Property(property: 'phone', type: 'string', maxLength: 20, nullable: true, example: '+212600000000'),
+                    new OA\Property(property: 'company_name', type: 'string', maxLength: 150, nullable: true, description: 'Owner accounts only.'),
+                    new OA\Property(property: 'avatar', type: 'string', nullable: true, description: 'Base64 data URI of a JPEG, PNG, WEBP or GIF image (max 2MB).', example: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg...'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Profile updated.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Profile updated successfully.'),
+                        new OA\Property(property: 'user', ref: '#/components/schemas/User'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function update(Request $request)
     {
         $user = $request->user();
@@ -124,6 +170,28 @@ class ProfileController extends Controller
      * The reference is cleared before the file is unlinked: an unlink that
      * fails only leaves an orphaned file behind, never a URL that 404s.
      */
+    #[OA\Delete(
+        path: '/profile/avatar',
+        operationId: 'profileDestroyAvatar',
+        tags: ['Profile'],
+        summary: 'Remove the profile picture',
+        description: 'Clears the avatar of the signed-in account and deletes the stored file.',
+        security: [['sanctum' => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: 'Avatar removed.',
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'message', type: 'string', example: 'Profile picture removed successfully.'),
+                        new OA\Property(property: 'user', ref: '#/components/schemas/User'),
+                    ],
+                ),
+            ),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 422, description: 'No profile picture to remove.', content: new OA\JsonContent(ref: '#/components/schemas/ValidationErrorResponse')),
+        ],
+    )]
     public function destroyAvatar(Request $request)
     {
         $user = $request->user();
@@ -159,6 +227,30 @@ class ProfileController extends Controller
      * gets its first password, after which the rule above applies to it like to
      * every other account.
      */
+    #[OA\Put(
+        path: '/profile/password',
+        operationId: 'profileChangePassword',
+        tags: ['Profile'],
+        summary: 'Change the password',
+        description: 'The current password is required for accounts that already have one; a Google-only account uses this to set its first password. Every other token is revoked afterwards. Rate limited to 5 requests per minute.',
+        security: [['sanctum' => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ['password', 'password_confirmation'],
+                properties: [
+                    new OA\Property(property: 'current_password', type: 'string', format: 'password', description: 'Required when the account already has a password.'),
+                    new OA\Property(property: 'password', type: 'string', format: 'password', minLength: 8),
+                    new OA\Property(property: 'password_confirmation', type: 'string', format: 'password'),
+                ],
+            ),
+        ),
+        responses: [
+            new OA\Response(response: 200, description: 'Password changed.', content: new OA\JsonContent(ref: '#/components/schemas/MessageResponse')),
+            new OA\Response(response: 401, ref: '#/components/responses/Unauthorized'),
+            new OA\Response(response: 422, ref: '#/components/responses/ValidationError'),
+        ],
+    )]
     public function changePassword(Request $request)
     {
         $user = $request->user();
